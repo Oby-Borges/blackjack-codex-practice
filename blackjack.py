@@ -19,10 +19,25 @@ CARD_VALUES = {
     "A": 11,
 }
 
-PLAYER_DRAW_DELAY = 1.2
-DEALER_TURN_DELAY = 1.5
-DEALER_DRAW_DELAY = 1.2
-RESULT_DELAY = 1.0
+STARTING_CHIPS = 100
+TYPEWRITER_DELAY = 0.02
+SHORT_PAUSE = 0.5
+MEDIUM_PAUSE = 0.8
+
+
+def typewriter_print(message, delay=TYPEWRITER_DELAY):
+    """Print text one character at a time for a simple animated effect."""
+    for character in message:
+        print(character, end="", flush=True)
+        time.sleep(delay)
+    print()
+
+
+
+def pause(seconds=SHORT_PAUSE):
+    """Pause briefly to make events feel more step-by-step."""
+    time.sleep(seconds)
+
 
 
 def create_deck():
@@ -98,6 +113,38 @@ def display_hand(name, hand, hide_first_card=False):
 
 
 
+def show_round_header(round_number, chips, bet):
+    """Display an animated header for the round."""
+    print_divider()
+    typewriter_print(f"Round {round_number}")
+    typewriter_print(f"Chips: {chips} | Bet: {bet}")
+    print_divider()
+
+
+
+def get_bet(chips):
+    """Ask the player how many chips they want to bet."""
+    while True:
+        print_divider()
+        print(f"Current chips: {chips}")
+        bet_text = input("Enter your bet for this round: ").strip()
+
+        if not bet_text.isdigit():
+            print("Please enter a positive whole number.")
+            continue
+
+        bet = int(bet_text)
+        if bet <= 0:
+            print("Your bet must be at least 1 chip.")
+            continue
+        if bet > chips:
+            print("You cannot bet more chips than you have.")
+            continue
+
+        return bet
+
+
+
 def get_player_choice():
     """Ask the player whether to hit or stand."""
     while True:
@@ -125,36 +172,116 @@ def ask_to_play_again():
 def determine_winner(player_value, dealer_value):
     """Return the outcome message based on Blackjack rules."""
     if player_value > 21:
-        return "You bust. Dealer wins!"
+        return "dealer"
     if dealer_value > 21:
-        return "Dealer busts. You win!"
+        return "player"
     if player_value > dealer_value:
-        return "You win!"
+        return "player"
     if dealer_value > player_value:
+        return "dealer"
+    return "push"
+
+
+
+def outcome_message(outcome, player_blackjack=False, dealer_blackjack=False):
+    """Return a friendly final message for the outcome."""
+    if player_blackjack and dealer_blackjack:
+        return "Both you and the dealer have blackjack. Push!"
+    if player_blackjack:
+        return "Blackjack! You win!"
+    if dealer_blackjack:
+        return "Dealer has blackjack. Dealer wins!"
+    if outcome == "player":
+        return "You win!"
+    if outcome == "dealer":
         return "Dealer wins!"
     return "Push! It's a tie."
 
 
 
-def show_final_result(player_hand, dealer_hand, message):
+def settle_bet(chips, bet, outcome):
+    """Return the updated chip total after the round."""
+    if outcome == "player":
+        return chips + bet
+    if outcome == "dealer":
+        return chips - bet
+    return chips
+
+
+
+def show_final_result(player_hand, dealer_hand, result_message, chips, bet):
     """Display the full results for the round."""
-    time.sleep(RESULT_DELAY)
+    pause(MEDIUM_PAUSE)
     print_divider()
     print("Final hands")
     print("-" * 40)
     display_hand("Player", player_hand)
     print()
     display_hand("Dealer", dealer_hand)
-    print(f"\nResult: {message}")
+    print()
+    typewriter_print(f"Result: {result_message}")
+
+    if chips > 0:
+        print(f"Chips after this round: {chips}")
+    else:
+        print(f"Chips after this round: 0")
+
+    print(f"Bet this round: {bet}")
     print_divider()
 
 
 
-def play_round(round_number):
-    """Run one round of Blackjack."""
-    print_divider()
-    print(f"Round {round_number}")
-    print_divider()
+def player_turn(deck, player_hand):
+    """Handle the player's turn and return the final hand."""
+    while calculate_hand_value(player_hand) < 21:
+        choice = get_player_choice()
+
+        if choice == "stand":
+            typewriter_print("You chose to stand.")
+            pause()
+            break
+
+        typewriter_print("You chose to hit.")
+        pause(0.35)
+        typewriter_print("Drawing a card...")
+        pause(0.6)
+        new_card = deal_card(deck)
+        player_hand.append(new_card)
+        typewriter_print(f"You drew: {card_to_string(new_card)}")
+        pause(0.35)
+        display_hand("Player", player_hand)
+
+        if calculate_hand_value(player_hand) >= 21:
+            break
+
+    return player_hand
+
+
+
+def dealer_turn(deck, dealer_hand):
+    """Handle the dealer's turn and return the final hand."""
+    typewriter_print("Dealer reveals the hidden card...")
+    pause(MEDIUM_PAUSE)
+    display_hand("Dealer", dealer_hand)
+
+    while calculate_hand_value(dealer_hand) < 17:
+        pause(0.6)
+        typewriter_print("Dealer draws a card...")
+        pause(0.6)
+        new_card = deal_card(deck)
+        dealer_hand.append(new_card)
+        typewriter_print(f"Dealer drew: {card_to_string(new_card)}")
+        pause(0.35)
+        display_hand("Dealer", dealer_hand)
+
+    return dealer_hand
+
+
+
+def play_round(round_number, chips):
+    """Run one round of Blackjack and return the updated chip count."""
+    bet = get_bet(chips)
+    show_round_header(round_number, chips, bet)
 
     deck = create_deck()
     shuffle_deck(deck)
@@ -170,61 +297,56 @@ def play_round(round_number):
     dealer_has_blackjack = is_blackjack(dealer_hand)
 
     if player_has_blackjack or dealer_has_blackjack:
-        if player_has_blackjack and dealer_has_blackjack:
-            result = "Both you and the dealer have blackjack. Push!"
-        elif player_has_blackjack:
-            result = "Blackjack! You win!"
-        else:
-            result = "Dealer has blackjack. Dealer wins!"
+        outcome = determine_winner(calculate_hand_value(player_hand), calculate_hand_value(dealer_hand))
+        result = outcome_message(outcome, player_has_blackjack, dealer_has_blackjack)
+        updated_chips = settle_bet(chips, bet, outcome)
+        show_final_result(player_hand, dealer_hand, result, updated_chips, bet)
+        return updated_chips
 
-        show_final_result(player_hand, dealer_hand, result)
-        return
-
-    while calculate_hand_value(player_hand) < 21:
-        if get_player_choice() == "stand":
-            break
-
-        print("\nYou chose to hit...")
-        time.sleep(PLAYER_DRAW_DELAY)
-        new_card = deal_card(deck)
-        player_hand.append(new_card)
-        print(f"You drew: {card_to_string(new_card)}")
-        print()
-        display_hand("Player", player_hand)
-
+    player_turn(deck, player_hand)
     player_value = calculate_hand_value(player_hand)
+
     if player_value > 21:
-        show_final_result(player_hand, dealer_hand, determine_winner(player_value, calculate_hand_value(dealer_hand)))
-        return
+        result = "You bust. Dealer wins!"
+        updated_chips = settle_bet(chips, bet, "dealer")
+        show_final_result(player_hand, dealer_hand, result, updated_chips, bet)
+        return updated_chips
 
-    print("\nDealer's turn...")
-    time.sleep(DEALER_TURN_DELAY)
-    display_hand("Dealer", dealer_hand)
-
-    while calculate_hand_value(dealer_hand) < 17:
-        time.sleep(DEALER_DRAW_DELAY)
-        new_card = deal_card(deck)
-        dealer_hand.append(new_card)
-        print(f"\nDealer draws: {card_to_string(new_card)}")
-        display_hand("Dealer", dealer_hand)
+    typewriter_print("Dealer's turn...")
+    pause(MEDIUM_PAUSE)
+    dealer_turn(deck, dealer_hand)
 
     dealer_value = calculate_hand_value(dealer_hand)
-    result = determine_winner(player_value, dealer_value)
-    show_final_result(player_hand, dealer_hand, result)
+    outcome = determine_winner(player_value, dealer_value)
+
+    if dealer_value > 21:
+        result = "Dealer busts. You win!"
+    else:
+        result = outcome_message(outcome)
+
+    updated_chips = settle_bet(chips, bet, outcome)
+    show_final_result(player_hand, dealer_hand, result, updated_chips, bet)
+    return updated_chips
 
 
 
 def play_blackjack():
     """Run Blackjack in the terminal with multiple rounds."""
-    print("Welcome to Blackjack!")
+    typewriter_print("Welcome to Blackjack!")
 
+    chips = STARTING_CHIPS
     round_number = 1
-    while True:
-        play_round(round_number)
+
+    while chips > 0:
+        chips = play_round(round_number, chips)
         round_number += 1
 
+        if chips <= 0:
+            typewriter_print("You ran out of chips. Game over!")
+            break
+
         if not ask_to_play_again():
-            print("\nThanks for playing!")
+            typewriter_print("Thanks for playing!")
             break
 
 
